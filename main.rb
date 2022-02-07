@@ -3,13 +3,8 @@ class Player
   
   def initialize(name='o')
     @name = name
-    @position = {x: 0, y: 0}
+    @position = {x: 8, y: 5}
   end
-  
-  # def update_position board, die
-    # p *board
-    # p die
-  # end
 end
 
 
@@ -44,19 +39,22 @@ class Board
 
   def update_board player_position, die
     @board[player_position[:x]][player_position[:y]] = '.'
-    if player_position[:y] + die >= 10
-      player_position[:x] += 1
-      if player_position[:x] % 2 == 1
-        player_position[:y] = 10 - ((player_position[:y] + die) % 10)
+    if player_position[:x] % 2 == 0
+      if player_position[:y] + die >= 10
+        player_position[:x] += 1
+        player_position[:y] = 9 - ((player_position[:y] + die) % 10)
       else
-        player_position[:y] = (player_position[:y] + die) % 10
+        player_position[:y] = player_position[:y] + die
       end
     else
-      player_position[:y] += die
-      if player_position[:x] % 2 == 1
-        player_position[:y] = 10 - player_position[:y]
+      if player_position[:y] - die < 0
+        if player_position[:x] == 9
+          return player_position
+        end
+        player_position[:x] += 1
+        player_position[:y] = 9 - ((player_position[:y] - die) % 10)
       else
-        player_position[:y] = player_position[:y]
+        player_position[:y] = player_position[:y] - die
       end
     end
     @board[player_position[:x]][player_position[:y]] = 'o'
