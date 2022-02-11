@@ -1,21 +1,106 @@
+require 'curses'
+require 'byebug'
+
+# Curses.init_screen
+# Curses.curs_set(0)
+
 class Player
-  attr_accessor :name, :position
+  attr_accessor :name, :position, :die
   
-  def initialize(name='o')
+  def initialize(name='O')
     @name = name
-    @position = {x: 8, y: 5}
+    @position = {x: 0, y: 0}
+    @die = Random.new
+  end
+
+  def roll_die
+    self.die.rand(1..6)
+  end
+
+  def begin?
+    !! (roll_die == 1)
+  end
+
+  def won?
+    !! (@position[:x] == 9 and @position[:y] == 0)
   end
 end
 
 
 class Board
-  attr_accessor :board, :players, :die
+  attr_accessor :board, :players, :die, :snakes, :ladders
+  @@rand_obj = Random.new
 
   def initialize(players=[])
     @players = players
-    @board = Array.new(10) {Array.new(10, '.')}
-    @board[0][0] = 'o'
-    @board[9][0] = '#'
+    @board = create_board
+  end
+
+  def create_board
+    board = Array.new(10) {Array.new(10)}
+    
+    @snakes_and_ladders = {}
+    bottoms = (2..89).to_a.sample 20
+    occupied = Array.new(100, false)
+
+    bottoms.each do |bottom|
+      occupied[bottom-1] = true
+      begin
+        top = @@rand_obj.rand((bottom+1)..99)
+        # byebug
+      end while occupied[top-1] or (top)/10 == bottom/10
+      occupied[top-1] = true
+      @snakes_and_ladders[bottom] = top
+    end
+
+    @ladders = {}
+    @snakes = {}
+    
+    @snakes_and_ladders.each do |key, value|
+      if @ladders.count == 10
+        break
+      end
+      @ladders[key] = value
+    end
+
+    @snakes_and_ladders.reverse_each do |key, value|
+      if @snakes.count == 10
+        break
+      end
+      @snakes[value] = key
+    end
+
+    for i in (0..9)
+      for j in (0..9)
+        board_no = (i * 10) + (j + 1)
+        
+        if @snakes.key?(board_no)
+          board[i][j] = 'ST'
+          top = @snakes[board_no]
+          board[top/10][top%10] = 'SB'
+        elsif @ladders.key?(board_no)
+          board[i][j] = 'LB'
+          top = @ladders[board_no]
+          board[top/10][top%10] = 'LT'
+          # print top.to_s + " " + board[top/10][top%10]
+          # puts
+        else
+          if i % 2 == 1
+            board[i][j] = (i * 10) + (10 - j)
+          else
+            board[i][j] = board_no
+          end
+        end
+      end
+    end
+
+    board[0][0] = 'S'
+    board[9][0] = 'E'
+
+    
+    p "Ladders", ladders
+    p "Snakes", snakes
+    board
   end
 
   def players
@@ -24,21 +109,22 @@ class Board
     end
   end
 
-  def show_board
-    @board.each do |row|
-      row.each do |cell|
-        print cell, sep="  "
+  def show_board player_position, die
+    for i in (0..9)
+      for j in (0..9)
+        # print @board[9-i][j].to_s + "    "
+        Curses.setpos(i, j*4)
+        Curses.addstr(@board[9-i][j].to_s)
       end
       puts
     end
   end
 
-  def roll_die
-    self.die = Random.new.rand(1..6)
-  end
-
   def update_board player_position, die
-    @board[player_position[:x]][player_position[:y]] = '.'
+    old_x = player_position[:x]
+    old_y = player_position[:y]
+    old_position_no = (old_x * 10) + (old_y + 1)
+
     if player_position[:x] % 2 == 0
       if player_position[:y] + die >= 10
         player_position[:x] += 1
@@ -49,6 +135,7 @@ class Board
     else
       if player_position[:y] - die < 0
         if player_position[:x] == 9
+          @board[player_position[:x]][player_position[:y]] = '  '
           return player_position
         end
         player_position[:x] += 1
@@ -56,31 +143,56 @@ class Board
       else
         player_position[:y] = player_position[:y] - die
       end
+      old_position_no = (old_x * 10) + (10 - old_y)
     end
-    @board[player_position[:x]][player_position[:y]] = 'o'
+
+    @board[old_x][old_y] = old_position_no
+    new_position_no = (player_position[:x] * 10) + (player_position[:y] + 1)
+    if @snakes_and_ladders.key?(new_position_no)
+      if @board[player_position[:x]][player_position[:y]] == 'LB'
+        player_position[:x] = @snakes_and_ladders[new_position_no]/10
+        player_position[:y] = @snakes_and_ladders[new_position_no]%10
+      elsif @board[player_position[:x]][player_position[:y]] == 'ST'
+        player_position[:x] = @snakes_and_ladders[new_position_no]/10
+        player_position[:y] = @snakes_and_ladders[new_position_no]%10
+      end
+    end
+
+    @board[player_position[:x]][player_position[:y]] = '  '
   end
 end
 
 
 # create player
 player1 = Player.new("sid_ant")
-player2 = Player.new("var_sha256")
-player3 = Player.new("shiro")
-players = [player1, player2, player3]
+players = [player1]
 
 # create board
 game = Board.new(players)
 
-print "Old pos: "
-puts player1.position
-game.show_board
+Curses.setpos(0, 0)
+Curses.addstr("#{player1.name.capitalize}'s turn: [Roll die]")
+Curses.getch
 
-die = game.roll_die
-puts "Die: " + die.to_s
+# die value 1 begins the game
+while !player1.begin?
+  Curses.addstr("\r#{player1.name.capitalize}'s turn: [Die value not 1]") 
+  Curses.getch
+end
+Curses.clear
 
-game.update_board player1.position, die
+game.show_board player1.position, player1.die
+# Curses.getch
 
-puts
-print "New pos: "
-puts player1.position
-game.show_board
+while !player1.won?
+  die = player1.roll_die
+  game.update_board player1.position, die
+  game.show_board player1.position, die
+
+  Curses.setpos(10, 0)
+  Curses.addstr("Die: #{die} Postion: #{player1.position}")
+  Curses.getch
+end
+
+Curses.addstr("\nGame won")
+Curses.getch
